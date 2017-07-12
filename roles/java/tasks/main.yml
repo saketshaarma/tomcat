@@ -1,0 +1,24 @@
+---
+ - hosts: tomcat
+   tasks:
+   - authorized_key:
+       user: ubuntu
+       key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+   - name: update repo after adding it
+     stat: path=/var/cache/apt
+     register: apt_cache_stat
+   - name: update apt if needed
+     apt: update_cache=yes
+     when: ansible_date_time.epoch|float - apt_cache_stat.stat.mtime > 60
+   - name: create directory jvm
+     file: path=/usr/lib/jvm state=directory mode=0755
+   - name: copy jdk-8u92-linux-x64.tar.gz file to tomcat nodes
+     unarchive: src=templates/jdk-8u92-linux-x64.tar.gz dest=/usr/lib/jvm
+   - name: move jdk1.8.0_92 to java-8-oracle
+     command: mv /usr/lib/jvm/jdk1.8.0_92 /usr/lib/jvm/java-8-oracle
+   - name: move jdk1.8.0_92 to java-8-oracle
+     command: update-alternatives --install /usr/bin/java java /usr/lib/jvm/java-8-oracle/bin/java 100
+   - name: move jdk1.8.0_92 to java-8-oracle
+     command: update-alternatives --install /usr/bin/javac javac /usr/lib/jvm/java-8-oracle/bin/javac 100
+   - name: copy environment file
+     copy: src=templates/environment dest=/etc/environment owner=root group=root mode=0644

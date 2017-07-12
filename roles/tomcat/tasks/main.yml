@@ -1,0 +1,88 @@
+---
+ - hosts: tomcat
+   tasks:
+   - authorized_key:
+       user: ubuntu
+       key: "{{ lookup('file', lookup('env','HOME') + '/.ssh/id_rsa.pub') }}"
+   - name: create init script to start tomcat
+     template: src=tomcat dest=/etc/init.d mode=755 owner=root group=root
+   - name: update rc script
+     command: update-rc.d tomcat defaults
+   - name: create tomcat group
+     group: name=tomcat state=present
+   - name: Add Tomcat User
+     user: name=tomcat shell=/bin/false group=tomcat
+   - name: check apt last update
+     stat: path=/var/cache/apt
+     register: apt_cache_stat
+   - name: update apt if needed
+     apt: update_cache=yes
+     when: ansible_date_time.epoch|float -      apt_cache_stat.stat.mtime > 60
+   - name: Upgrade apt
+     apt: upgrade=full
+   - name: Make a general dist-upgrade
+     apt: upgrade=dist
+   - name: Update the reposistories
+     command: 'apt-get update'
+   - name: Install list of packages for tomcat
+     apt: name={{item}} state=installed
+     with_items:
+          - build-essential
+          - libtcnative-1
+          - libapr1-dev
+          - libssl-dev
+          - libcap2-bin
+          - haveged
+   - name: Tomcat download
+     get_url: url=http://archive.apache.org/dist/tomcat/tomcat-8/v8.0.36/bin/apache-tomcat-8.0.36.tar.gz dest=/opt/apache-tomcat-8.0.36.tar.gz
+   - name: Extract archive
+     unarchive: src=/opt/apache-tomcat-8.0.36.tar.gz dest=/opt copy=no
+   - name: rename it
+     command: mv /opt/apache-tomcat-8.0.36 /opt/tomcat
+   - name: change permission of tomcat folder
+     file: path=/opt/tomcat state=directory group=tomcat owner=tomcat recurse=yes
+   - name: change permission of conf directory
+     file: path=/opt/tomcat/conf state=directory mode=0775
+   - name: change permission of conf directory
+     file: path=/opt/tomcat/conf mode=0775
+   - name: Ensure files are 0640
+     command: find /opt/tomcat/conf -type f -exec chmod -c 0640 {} \;
+     register: chmod_result
+     changed_when: "chmod_result.stdout != \"\""
+   - name: Delete folders available inside webapps
+     command: rm -rf /opt/tomcat/webapps/docs
+   - name: Delete folders available inside examples
+     command: rm -rf /opt/tomcat/webapps/examples
+   - name: Delete folders available inside host-manager
+     command: rm -rf /opt/tomcat/webapps/host-manager
+   - name: Delete folders available inside manager
+     command: rm -rf /opt/tomcat/webapps/manager
+   - name: Delete folders available inside ROOT
+     command: rm -rf /opt/tomcat/webapps/ROOT
+   - name: set permission
+     command: setcap cap_net_bind_service+ep /usr/lib/jvm/java-8-oracle/bin/java
+   - name: untar file
+     unarchive: src=/opt/tomcat/bin/commons-daemon-native.tar.gz  dest=/opt/tomcat/bin copy=no
+   - name: change permission of tomcat folder
+     file: path=/opt/tomcat state=directory group=tomcat owner=tomcat recurse=yes
+   - name: Running ./configure for Commons Daemon Native
+     command: '"{{ item }}" chdir=/opt/tomcat/bin/commons-daemon-1.0.15-native-src/unix'
+     environment:
+      JAVA_HOME: /usr/lib/jvm/java-8-oracle
+     with_items:
+       - ./configure
+   - name: Running "make" for Commons Daemon Native
+     command: '"{{ item }}" chdir=/opt/tomcat/bin/commons-daemon-1.0.15-native-src/unix'
+     with_items:
+       - make
+   - name: Copying JSVC
+     command: 'cp /opt/tomcat/bin/commons-daemon-1.0.15-native-src/unix/jsvc /opt/tomcat/bin'
+   - name: Tomcat download
+     get_url: url=https://tomcat.apache.org/tomcat-6.0-doc/appdev/sample/sample.war validate_certs=False dest=/opt/tomcat/webapps owner=tomcat group=tomcat mode=0644
+   - name: Check if Service Exists
+     stat: path=/etc/init.d/tomcat
+     register: service_status
+   - name: Start Service
+     service: name=tomcat state=started
+     when: service_status.stat.exists
+     register: service_started

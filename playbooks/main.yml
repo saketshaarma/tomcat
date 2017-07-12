@@ -1,0 +1,3 @@
+---
+- include: ../roles/java/tasks/main.yml
+ include: ../roles/emc/tomcat/main.yml
